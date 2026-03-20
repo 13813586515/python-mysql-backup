@@ -1,0 +1,17 @@
+{
+    "server": {
+        "host": "127.0.0.1",
+        "port": 5000
+    },
+    "database": {
+        "host": "192.168.0.45",
+        "port": 3306,
+        "user": "root",
+        "password": "lampo_test_2022",
+        "charset": "utf8mb4"
+    },
+    "backup": {
+        "path": "./backups",
+        "compress": true
+    }
+}

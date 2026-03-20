@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL 备份系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+        }
+        body {
+            background-color: #f3f4f6;
+            min-height: 100vh;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+            border-radius: 12px 12px 0 0 !important;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+            transform: translateY(-1px);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border: none;
+            border-radius: 8px;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            border: none;
+            border-radius: 8px;
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            padding: 10px 14px;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .nav-tabs {
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .nav-tabs .nav-link {
+            border: none;
+            color: #6b7280;
+            font-weight: 500;
+            padding: 12px 24px;
+            border-radius: 0;
+        }
+        .nav-tabs .nav-link:hover {
+            color: #2563eb;
+            background-color: transparent;
+        }
+        .nav-tabs .nav-link.active {
+            color: #2563eb;
+            border-bottom: 3px solid #2563eb;
+            background-color: transparent;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .status-installed {
+            background-color: #d1fae5;
+            color: #059669;
+        }
+        .status-missing {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
+        .table {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table thead {
+            background-color: #f8fafc;
+        }
+        .table th {
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .log-entry {
+            padding: 8px 12px;
+            border-left: 3px solid #d1d5db;
+            background-color: #f9fafb;
+            margin-bottom: 4px;
+            border-radius: 0 4px 4px 0;
+            font-family: 'Consolas', monospace;
+            font-size: 0.875rem;
+        }
+        .log-info { border-left-color: #3b82f6; }
+        .log-error { border-left-color: #ef4444; background-color: #fef2f2; }
+        .log-warning { border-left-color: #f59e0b; background-color: #fffbeb; }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .alert {
+            border-radius: 8px;
+            border: none;
+        }
+        .file-size {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 10000;
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand text-white" href="#">
+                <i class="bi bi-database-fill-gear me-2"></i>MySQL 备份系统
+            </a>
+            <span class="navbar-text text-white-50">
+                <i class="bi bi-shield-check me-1"></i>纯Python实现，无需系统依赖
+            </span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="dependencyAlert" class="alert alert-warning d-none mb-4">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-exclamation-triangle-fill me-2 fs-4"></i>
+                <div>
+                    <strong>检测到缺少依赖！</strong>
+                    <p class="mb-0 mt-1">部分Python依赖未安装，请点击下方按钮一键安装。</p>
+                </div>
+                <button class="btn btn-warning ms-auto" onclick="installDependencies()">
+                    <i class="bi bi-download me-1"></i>一键安装依赖
+                </button>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="env-tab" data-bs-toggle="tab" data-bs-target="#env" type="button">
+                    <i class="bi bi-cpu-fill me-1"></i>环境检测
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button">
+                    <i class="bi bi-gear-fill me-1"></i>数据库配置
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button">
+                    <i class="bi bi-cloud-arrow-up-fill me-1"></i>数据备份
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#files" type="button">
+                    <i class="bi bi-folder-fill me-1"></i>备份文件
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs" type="button">
+                    <i class="bi bi-journal-text me-1"></i>操作日志
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="mainTabsContent">
+            <div class="tab-pane fade show active" id="env" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-cpu me-2"></i>Python 环境依赖检测</span>
+                                <button class="btn btn-sm btn-outline-primary" onclick="checkDependenciesDetail()">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>重新检测
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div id="dependencyStatus">
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                        <p class="mt-2">正在检测环境依赖...</p>
+                                    </div>
+                                </div>
+                                <div id="installProgress" class="d-none">
+                                    <div class="progress mb-3">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                                    </div>
+                                    <p class="text-center text-muted">正在安装依赖，请稍候...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-info-circle me-2"></i>依赖说明
+                            </div>
+                            <div class="card-body">
+                                <h6><i class="bi bi-box text-primary me-2"></i>flask</h6>
+                                <p class="text-muted small ms-4">Web框架，用于提供可视化界面服务</p>
+                                
+                                <h6><i class="bi bi-box text-primary me-2"></i>pymysql</h6>
+                                <p class="text-muted small ms-4">MySQL数据库连接驱动，纯Python实现</p>
+                                
+                                <h6><i class="bi bi-box text-primary me-2"></i>cryptography</h6>
+                                <p class="text-muted small ms-4">加密库，用于MySQL连接加密支持</p>
+                                
+                                <div class="alert alert-success mt-3" id="envReadyAlert" style="display: none;">
+                                    <i class="bi bi-check-circle-fill me-2"></i>
+                                    <strong>环境就绪！</strong>
+                                    <p class="mb-0 mt-1 small">所有依赖已安装，可以开始使用。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="config" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-database me-2"></i>数据库连接配置
+                            </div>
+                            <div class="card-body">
+                                <form id="configForm">
+                                    <div class="mb-3">
+                                        <label class="form-label">主机地址</label>
+                                        <input type="text" class="form-control" id="dbHost" placeholder="localhost">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">端口</label>
+                                        <input type="number" class="form-control" id="dbPort" value="3306">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">用户名</label>
+                                        <input type="text" class="form-control" id="dbUser" placeholder="root">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">密码</label>
+                                        <div class="input-group">
+                                            <input type="password" class="form-control" id="dbPassword" placeholder="输入密码">
+                                            <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                                <i class="bi bi-eye" id="passwordToggleIcon"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">字符集</label>
+                                        <select class="form-select" id="dbCharset">
+                                            <option value="utf8mb4">utf8mb4 (推荐)</option>
+                                            <option value="utf8">utf8</option>
+                                            <option value="latin1">latin1</option>
+                                        </select>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-primary" onclick="testConnection()">
+                                            <i class="bi bi-plug me-1"></i>测试连接
+                                        </button>
+                                        <button type="button" class="btn btn-success" onclick="saveConfig()">
+                                            <i class="bi bi-save me-1"></i>保存配置
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-info-circle me-2"></i>使用说明
+                            </div>
+                            <div class="card-body">
+                                <h6><i class="bi bi-1-circle-fill text-primary me-2"></i>配置数据库</h6>
+                                <p class="text-muted ms-4">填写左侧的数据库连接信息，点击"测试连接"验证配置是否正确。</p>
+                                
+                                <h6><i class="bi bi-2-circle-fill text-primary me-2"></i>执行备份</h6>
+                                <p class="text-muted ms-4">切换到"数据备份"标签页，选择要备份的数据库，点击备份按钮。</p>
+                                
+                                <h6><i class="bi bi-3-circle-fill text-primary me-2"></i>下载备份</h6>
+                                <p class="text-muted ms-4">在"备份文件"标签页查看所有备份文件，支持下载和删除操作。</p>
+                                
+                                <div class="alert alert-info mt-3">
+                                    <i class="bi bi-lightbulb me-2"></i>
+                                    <strong>提示：</strong>备份文件使用gzip压缩，可使用解压软件解压后查看SQL内容。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="backup" role="tabpanel">
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-cloud-arrow-up me-2"></i>执行备份</span>
+                                <button class="btn btn-sm btn-outline-primary" onclick="loadDatabases()">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>刷新数据库列表
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <label class="form-label">选择数据库</label>
+                                    <select class="form-select" id="databaseSelect" size="8">
+                                        <option value="">请先测试连接并刷新数据库列表</option>
+                                    </select>
+                                </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="backupAll">
+                                    <label class="form-check-label" for="backupAll">
+                                        备份所有数据库
+                                    </label>
+                                </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="compressBackup" checked>
+                                    <label class="form-check-label" for="compressBackup">
+                                        使用gzip压缩备份文件
+                                    </label>
+                                </div>
+                                <button class="btn btn-primary btn-lg" onclick="executeBackup()">
+                                    <i class="bi bi-cloud-arrow-up-fill me-2"></i>开始备份
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-bar-chart me-2"></i>备份状态
+                            </div>
+                            <div class="card-body">
+                                <div id="backupStatus">
+                                    <div class="text-center text-muted py-4">
+                                        <i class="bi bi-cloud-slash fs-1"></i>
+                                        <p class="mt-2">暂无备份任务</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="files" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-folder me-2"></i>备份文件列表</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadBackupFiles()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="backupFilesTable">
+                                <thead>
+                                    <tr>
+                                        <th>文件名</th>
+                                        <th>大小</th>
+                                        <th>创建时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backupFilesBody">
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">暂无备份文件</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="logs" role="tabpanel">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-journal-text me-2"></i>操作日志</span>
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadLogs()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                        </button>
+                    </div>
+                    <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                        <div id="logsContainer">
+                            <div class="text-center text-muted py-4">暂无日志记录</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center text-muted py-4 mt-4">
+        <small>MySQL 备份系统 - 纯Python实现，跨平台支持</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function showLoading() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast show align-items-center text-white bg-${type === 'error' ? 'danger' : type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
+                </div>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function checkDependencies() {
+            try {
+                const response = await fetch('/api/check-dependencies');
+                const data = await response.json();
+                
+                if (!data.all_installed) {
+                    document.getElementById('dependencyAlert').classList.remove('d-none');
+                } else {
+                    document.getElementById('dependencyAlert').classList.add('d-none');
+                }
+                return data;
+            } catch (error) {
+                console.error('检查依赖失败:', error);
+                return null;
+            }
+        }
+
+        async function checkDependenciesDetail() {
+            const statusDiv = document.getElementById('dependencyStatus');
+            statusDiv.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">正在检测环境依赖...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/check-dependencies');
+                const data = await response.json();
+                
+                let html = '<div class="table-responsive"><table class="table table-hover">';
+                html += '<thead><tr><th>依赖包</th><th>状态</th><th>版本</th></tr></thead><tbody>';
+                
+                const packages = ['flask', 'pymysql', 'cryptography'];
+                packages.forEach(pkg => {
+                    const info = data.dependencies[pkg] || { installed: false, version: null };
+                    html += `
+                        <tr>
+                            <td><i class="bi bi-box text-primary me-2"></i>${pkg}</td>
+                            <td>
+                                ${info.installed 
+                                    ? '<span class="status-badge status-installed"><i class="bi bi-check-circle-fill"></i>已安装</span>'
+                                    : '<span class="status-badge status-missing"><i class="bi bi-x-circle-fill"></i>未安装</span>'}
+                            </td>
+                            <td>${info.version || '-'}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table></div>';
+                
+                if (!data.all_installed) {
+                    html += `
+                        <div class="alert alert-warning mt-3">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <strong>缺少必要依赖！</strong>
+                            <p class="mb-0 mt-1">请点击下方按钮一键安装所有依赖。</p>
+                        </div>
+                        <button class="btn btn-primary btn-lg mt-2" onclick="installDependenciesUI()">
+                            <i class="bi bi-download me-2"></i>一键安装依赖
+                        </button>
+                    `;
+                    document.getElementById('envReadyAlert').style.display = 'none';
+                } else {
+                    document.getElementById('envReadyAlert').style.display = 'block';
+                    html += `
+                        <div class="alert alert-success mt-3">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            <strong>环境检测通过！</strong>
+                            <p class="mb-0 mt-1">所有依赖已正确安装，可以开始使用系统。</p>
+                        </div>
+                        <a href="#" class="btn btn-success btn-lg mt-2" onclick="document.getElementById('config-tab').click(); return false;">
+                            <i class="bi bi-arrow-right me-2"></i>开始配置数据库
+                        </a>
+                    `;
+                }
+                
+                statusDiv.innerHTML = html;
+                
+                if (!data.all_installed) {
+                    document.getElementById('dependencyAlert').classList.remove('d-none');
+                } else {
+                    document.getElementById('dependencyAlert').classList.add('d-none');
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle-fill me-2"></i>
+                        检测失败: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function installDependenciesUI() {
+            const statusDiv = document.getElementById('dependencyStatus');
+            const progressDiv = document.getElementById('installProgress');
+            
+            statusDiv.innerHTML = '';
+            progressDiv.classList.remove('d-none');
+            
+            try {
+                const response = await fetch('/api/install-dependencies', { method: 'POST' });
+                const data = await response.json();
+                
+                progressDiv.classList.add('d-none');
+                
+                if (data.success) {
+                    showToast('依赖安装成功！', 'success');
+                    checkDependenciesDetail();
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle-fill me-2"></i>
+                            安装失败: ${data.message}
+                        </div>
+                        <button class="btn btn-primary" onclick="installDependenciesUI()">
+                            <i class="bi bi-arrow-clockwise me-2"></i>重试
+                        </button>
+                    `;
+                }
+            } catch (error) {
+                progressDiv.classList.add('d-none');
+                statusDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle-fill me-2"></i>
+                        安装失败: ${error.message}
+                    </div>
+                    <button class="btn btn-primary" onclick="installDependenciesUI()">
+                        <i class="bi bi-arrow-clockwise me-2"></i>重试
+                    </button>
+                `;
+            }
+        }
+
+        async function installDependencies() {
+            showLoading();
+            try {
+                const response = await fetch('/api/install-dependencies', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('依赖安装成功！', 'success');
+                    document.getElementById('dependencyAlert').classList.add('d-none');
+                    checkDependenciesDetail();
+                } else {
+                    showToast('依赖安装失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showToast('依赖安装失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                
+                if (data.success && data.config) {
+                    const dbConfig = data.config.database || {};
+                    document.getElementById('dbHost').value = dbConfig.host || 'localhost';
+                    document.getElementById('dbPort').value = dbConfig.port || 3306;
+                    document.getElementById('dbUser').value = dbConfig.user || '';
+                    document.getElementById('dbPassword').value = dbConfig.password || '';
+                    document.getElementById('dbCharset').value = dbConfig.charset || 'utf8mb4';
+                }
+            } catch (error) {
+                console.error('加载配置失败:', error);
+            }
+        }
+
+        async function saveConfig() {
+            const config = {
+                server: {
+                    host: '127.0.0.1',
+                    port: 5000
+                },
+                database: {
+                    host: document.getElementById('dbHost').value,
+                    port: parseInt(document.getElementById('dbPort').value),
+                    user: document.getElementById('dbUser').value,
+                    password: document.getElementById('dbPassword').value,
+                    charset: document.getElementById('dbCharset').value
+                },
+                backup: {
+                    path: './backups',
+                    compress: true
+                }
+            };
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('配置保存成功！', 'success');
+                } else {
+                    showToast('配置保存失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showToast('配置保存失败: ' + error.message, 'error');
+            }
+        }
+
+        async function testConnection() {
+            showLoading();
+            const config = {
+                host: document.getElementById('dbHost').value,
+                port: parseInt(document.getElementById('dbPort').value),
+                user: document.getElementById('dbUser').value,
+                password: document.getElementById('dbPassword').value,
+                charset: document.getElementById('dbCharset').value
+            };
+
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('连接成功！', 'success');
+                    loadDatabases();
+                } else {
+                    showToast('连接失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showToast('连接失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('dbPassword');
+            const icon = document.getElementById('passwordToggleIcon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                icon.className = 'bi bi-eye-slash';
+            } else {
+                passwordInput.type = 'password';
+                icon.className = 'bi bi-eye';
+            }
+        }
+
+        async function loadDatabases() {
+            try {
+                const response = await fetch('/api/databases');
+                const data = await response.json();
+                
+                const select = document.getElementById('databaseSelect');
+                select.innerHTML = '';
+                
+                if (data.success && data.databases.length > 0) {
+                    data.databases.forEach(db => {
+                        const option = document.createElement('option');
+                        option.value = db;
+                        option.textContent = db;
+                        select.appendChild(option);
+                    });
+                } else {
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = '未找到数据库，请检查连接配置';
+                    select.appendChild(option);
+                }
+            } catch (error) {
+                showToast('加载数据库列表失败: ' + error.message, 'error');
+            }
+        }
+
+        async function executeBackup() {
+            const backupAll = document.getElementById('backupAll').checked;
+            const database = document.getElementById('databaseSelect').value;
+            const compress = document.getElementById('compressBackup').checked;
+
+            if (!backupAll && !database) {
+                showToast('请选择要备份的数据库', 'warning');
+                return;
+            }
+
+            showLoading();
+            document.getElementById('backupStatus').innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">备份中...</span>
+                    </div>
+                    <p class="mt-2">正在备份中，请稍候...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        database: database,
+                        backup_all: backupAll,
+                        compress: compress
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (backupAll) {
+                        let html = '<div class="list-group">';
+                        data.results.forEach(result => {
+                            html += `
+                                <div class="list-group-item list-group-item-${result.success ? 'success' : 'danger'}">
+                                    <i class="bi bi-${result.success ? 'check-circle' : 'x-circle'} me-2"></i>
+                                    ${result.database}: ${result.message}
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                        document.getElementById('backupStatus').innerHTML = html;
+                    } else {
+                        document.getElementById('backupStatus').innerHTML = `
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle-fill me-2"></i>
+                                备份成功！<br>
+                                <small>${data.filepath}</small>
+                            </div>
+                        `;
+                    }
+                    showToast('备份完成！', 'success');
+                    loadBackupFiles();
+                } else {
+                    document.getElementById('backupStatus').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-x-circle-fill me-2"></i>
+                            ${data.message}
+                        </div>
+                    `;
+                    showToast('备份失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showToast('备份失败: ' + error.message, 'error');
+                document.getElementById('backupStatus').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-x-circle-fill me-2"></i>
+                        ${error.message}
+                    </div>
+                `;
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function loadBackupFiles() {
+            try {
+                const response = await fetch('/api/backups');
+                const data = await response.json();
+                
+                const tbody = document.getElementById('backupFilesBody');
+                tbody.innerHTML = '';
+                
+                if (data.success && data.files.length > 0) {
+                    data.files.forEach(file => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>
+                                <i class="bi bi-file-earmark-zip text-primary me-2"></i>
+                                ${file.name}
+                            </td>
+                            <td class="file-size">${formatFileSize(file.size)}</td>
+                            <td>${file.created_at}</td>
+                            <td>
+                                <a href="/api/download/${encodeURIComponent(file.name)}" class="btn btn-sm btn-primary me-1">
+                                    <i class="bi bi-download"></i> 下载
+                                </a>
+                                <button class="btn btn-sm btn-danger" onclick="deleteBackup('${file.name}')">
+                                    <i class="bi bi-trash"></i> 删除
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无备份文件</td></tr>';
+                }
+            } catch (error) {
+                showToast('加载备份文件失败: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteBackup(filename) {
+            if (!confirm(`确定要删除备份文件 "${filename}" 吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/delete-backup/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('删除成功！', 'success');
+                    loadBackupFiles();
+                } else {
+                    showToast('删除失败: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showToast('删除失败: ' + error.message, 'error');
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch('/api/logs?limit=100');
+                const data = await response.json();
+                
+                const container = document.getElementById('logsContainer');
+                container.innerHTML = '';
+                
+                if (data.success && data.logs.length > 0) {
+                    data.logs.forEach(log => {
+                        const div = document.createElement('div');
+                        div.className = `log-entry log-${log.level.toLowerCase()}`;
+                        div.innerHTML = `
+                            <span class="text-muted">${log.timestamp}</span>
+                            <span class="badge bg-${log.level === 'ERROR' ? 'danger' : log.level === 'WARNING' ? 'warning' : 'info'} ms-2">${log.level}</span>
+                            <span class="ms-2">${log.message}</span>
+                        `;
+                        container.appendChild(div);
+                    });
+                } else {
+                    container.innerHTML = '<div class="text-center text-muted py-4">暂无日志记录</div>';
+                }
+            } catch (error) {
+                showToast('加载日志失败: ' + error.message, 'error');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            checkDependenciesDetail();
+            loadConfig();
+            loadBackupFiles();
+            loadLogs();
+        });
+    </script>
+</body>
+</html>
