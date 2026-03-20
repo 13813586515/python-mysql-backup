@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL 备份工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-active {
+            border-bottom: 3px solid #3b82f6;
+            color: #3b82f6;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .toast-success { background-color: #10b981; }
+        .toast-error { background-color: #ef4444; }
+        .toast-info { background-color: #3b82f6; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 环境检查模态框 -->
+    <div id="envModal" class="modal">
+        <div class="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">环境检测</h3>
+            <div id="envContent" class="mb-4">
+                <p class="text-gray-600">正在检测环境依赖...</p>
+            </div>
+            <div id="envActions" class="hidden">
+                <button id="installBtn" class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition">
+                    一键安装依赖
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">MySQL 备份工具</h1>
+        
+        <!-- 标签页 -->
+        <div class="bg-white rounded-lg shadow mb-6">
+            <div class="flex border-b">
+                <button class="tab-btn tab-active px-6 py-3 font-medium" data-tab="config">数据库配置</button>
+                <button class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700" data-tab="backup">备份操作</button>
+                <button class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700" data-tab="history">备份记录</button>
+                <button class="tab-btn px-6 py-3 font-medium text-gray-500 hover:text-gray-700" data-tab="logs">日志查看</button>
+            </div>
+        </div>
+
+        <!-- 配置面板 -->
+        <div id="config-panel" class="tab-panel bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">数据库连接配置</h2>
+            <form id="configForm" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">主机地址</label>
+                        <input type="text" name="DB_HOST" value="localhost" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
+                        <input type="number" name="DB_PORT" value="3306" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                        <input type="text" name="DB_USER" value="root" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                        <input type="password" name="DB_PASSWORD" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">数据库名（备份单个数据库时需要）</label>
+                    <input type="text" name="DB_NAME" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="留空则备份所有数据库">
+                </div>
+                <div class="flex gap-3">
+                    <button type="button" id="testConnection" 
+                        class="bg-gray-500 text-white py-2 px-6 rounded-lg hover:bg-gray-600 transition">
+                        测试连接
+                    </button>
+                    <button type="submit" 
+                        class="bg-blue-500 text-white py-2 px-6 rounded-lg hover:bg-blue-600 transition">
+                        保存配置
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 备份面板 -->
+        <div id="backup-panel" class="tab-panel bg-white rounded-lg shadow p-6 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">备份操作</h2>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-3 text-gray-700">选择备份方式</h3>
+                <div class="flex gap-4 mb-4">
+                    <label class="flex items-center">
+                        <input type="radio" name="backupType" value="all" checked class="mr-2">
+                        <span>备份所有数据库</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="backupType" value="single" class="mr-2">
+                        <span>备份指定数据库</span>
+                    </label>
+                </div>
+                
+                <div id="singleDbSection" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">选择数据库</label>
+                    <select id="databaseSelect" class="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">请先配置数据库连接并点击刷新</option>
+                    </select>
+                    <button type="button" id="refreshDatabases" 
+                        class="mt-2 text-blue-500 hover:text-blue-600 text-sm">
+                        刷新数据库列表
+                    </button>
+                </div>
+            </div>
+            
+            <button type="button" id="startBackup" 
+                class="bg-green-500 text-white py-3 px-8 rounded-lg hover:bg-green-600 transition font-medium">
+                开始备份
+            </button>
+            
+            <div id="backupStatus" class="mt-4 hidden">
+                <div class="flex items-center gap-2">
+                    <div class="loading"></div>
+                    <span class="text-gray-600">正在备份中，请稍候...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 备份记录面板 -->
+        <div id="history-panel" class="tab-panel bg-white rounded-lg shadow p-6 hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">备份记录</h2>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">文件名</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">大小</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">备份时间</th>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-600">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backupTableBody">
+                        <tr>
+                            <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+                                暂无备份记录
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 日志面板 -->
+        <div id="logs-panel" class="tab-panel bg-white rounded-lg shadow p-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">备份日志</h2>
+                <button type="button" id="refreshLogs" 
+                    class="text-blue-500 hover:text-blue-600 text-sm">
+                    刷新日志
+                </button>
+            </div>
+            
+            <div id="logContent" class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm h-96 overflow-y-auto">
+                <p>正在加载日志...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toast 提示
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // 标签页切换
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('tab-active');
+                    b.classList.add('text-gray-500');
+                });
+                btn.classList.add('tab-active');
+                btn.classList.remove('text-gray-500');
+                
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+                document.getElementById(`${btn.dataset.tab}-panel`).classList.remove('hidden');
+                
+                if (btn.dataset.tab === 'history') {
+                    loadBackupHistory();
+                } else if (btn.dataset.tab === 'logs') {
+                    loadLogs();
+                }
+            });
+        });
+
+        // 加载配置
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                Object.keys(config).forEach(key => {
+                    const input = document.querySelector(`[name="${key}"]`);
+                    if (input) input.value = config[key] || '';
+                });
+            } catch (e) {
+                console.error('加载配置失败', e);
+            }
+        }
+
+        // 保存配置
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const config = Object.fromEntries(formData);
+            
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                showToast(data.message, data.status === 'success' ? 'success' : 'error');
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            }
+        });
+
+        // 测试连接
+        document.getElementById('testConnection').addEventListener('click', async () => {
+            const formData = new FormData(document.getElementById('configForm'));
+            const config = Object.fromEntries(formData);
+            
+            const btn = document.getElementById('testConnection');
+            const originalText = btn.textContent;
+            btn.textContent = '测试中...';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                showToast(data.message, data.status === 'success' ? 'success' : 'error');
+            } catch (e) {
+                showToast('测试失败: ' + e.message, 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        // 备份类型切换
+        document.querySelectorAll('input[name="backupType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                document.getElementById('singleDbSection').classList.toggle('hidden', radio.value !== 'single');
+            });
+        });
+
+        // 刷新数据库列表
+        document.getElementById('refreshDatabases').addEventListener('click', async () => {
+            const formData = new FormData(document.getElementById('configForm'));
+            const config = Object.fromEntries(formData);
+            
+            try {
+                const res = await fetch('/api/databases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                
+                const select = document.getElementById('databaseSelect');
+                if (data.status === 'success' && data.databases.length > 0) {
+                    select.innerHTML = data.databases.map(db => 
+                        `<option value="${db}">${db}</option>`
+                    ).join('');
+                    showToast(`找到 ${data.databases.length} 个数据库`, 'success');
+                } else {
+                    select.innerHTML = '<option value="">没有找到数据库</option>';
+                    showToast(data.message || '没有找到数据库', 'error');
+                }
+            } catch (e) {
+                showToast('获取数据库列表失败: ' + e.message, 'error');
+            }
+        });
+
+        // 开始备份
+        document.getElementById('startBackup').addEventListener('click', async () => {
+            const formData = new FormData(document.getElementById('configForm'));
+            const config = Object.fromEntries(formData);
+            
+            const backupType = document.querySelector('input[name="backupType"]:checked').value;
+            config.type = backupType;
+            if (backupType === 'single') {
+                config.database = document.getElementById('databaseSelect').value;
+                if (!config.database) {
+                    showToast('请选择要备份的数据库', 'error');
+                    return;
+                }
+            }
+            
+            document.getElementById('backupStatus').classList.remove('hidden');
+            document.getElementById('startBackup').disabled = true;
+            
+            try {
+                const res = await fetch('/api/backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                showToast(data.message, data.status === 'success' ? 'success' : 'error');
+            } catch (e) {
+                showToast('备份失败: ' + e.message, 'error');
+            } finally {
+                document.getElementById('backupStatus').classList.add('hidden');
+                document.getElementById('startBackup').disabled = false;
+            }
+        });
+
+        // 加载备份记录
+        async function loadBackupHistory() {
+            try {
+                const res = await fetch('/api/backups');
+                const data = await res.json();
+                
+                const tbody = document.getElementById('backupTableBody');
+                if (data.backups.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">暂无备份记录</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.backups.map(backup => `
+                    <tr class="border-t">
+                        <td class="px-4 py-3 text-sm">${backup.filename}</td>
+                        <td class="px-4 py-3 text-sm">${backup.size_str}</td>
+                        <td class="px-4 py-3 text-sm">${backup.ctime_str}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="/api/download/${backup.filename}" 
+                                class="text-blue-500 hover:text-blue-600 mr-3">下载</a>
+                            <button onclick="deleteBackup('${backup.filename}')" 
+                                class="text-red-500 hover:text-red-600">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('加载备份记录失败', e);
+            }
+        }
+
+        // 删除备份
+        async function deleteBackup(filename) {
+            if (!confirm('确定要删除这个备份文件吗？')) return;
+            
+            try {
+                const res = await fetch(`/api/delete/${filename}`, { method: 'DELETE' });
+                const data = await res.json();
+                showToast(data.message, data.status === 'success' ? 'success' : 'error');
+                if (data.status === 'success') {
+                    loadBackupHistory();
+                }
+            } catch (e) {
+                showToast('删除失败: ' + e.message, 'error');
+            }
+        }
+
+        // 加载日志
+        async function loadLogs() {
+            try {
+                const res = await fetch('/api/logs?lines=200');
+                const data = await res.json();
+                
+                const content = document.getElementById('logContent');
+                if (data.logs.length === 0) {
+                    content.innerHTML = '<p>暂无日志记录</p>';
+                    return;
+                }
+                
+                content.innerHTML = data.logs.map(line => 
+                    `<div class="py-0.5">${line}</div>`
+                ).join('');
+                content.scrollTop = content.scrollHeight;
+            } catch (e) {
+                document.getElementById('logContent').innerHTML = '<p class="text-red-400">加载日志失败</p>';
+            }
+        }
+
+        document.getElementById('refreshLogs').addEventListener('click', loadLogs);
+
+        // 环境检测
+        async function checkEnvironment() {
+            const modal = document.getElementById('envModal');
+            const content = document.getElementById('envContent');
+            const actions = document.getElementById('envActions');
+            
+            modal.classList.add('active');
+            
+            try {
+                const res = await fetch('/api/check-env');
+                const data = await res.json();
+                
+                if (data.all_installed) {
+                    content.innerHTML = '<p class="text-green-600">✓ 所有依赖已安装，可以正常使用</p>';
+                    setTimeout(() => modal.classList.remove('active'), 1500);
+                } else {
+                    content.innerHTML = `
+                        <p class="text-red-600 mb-2">✗ 检测到缺失以下依赖：</p>
+                        <ul class="list-disc list-inside text-gray-600">
+                            ${data.missing.map(m => `<li>${m}</li>`).join('')}
+                        </ul>
+                        <p class="mt-2 text-sm text-gray-500">请点击下方按钮安装依赖</p>
+                    `;
+                    actions.classList.remove('hidden');
+                }
+            } catch (e) {
+                content.innerHTML = '<p class="text-red-600">环境检测失败，请确保服务正常运行</p>';
+            }
+        }
+
+        // 安装依赖
+        document.getElementById('installBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('installBtn');
+            btn.textContent = '正在安装...';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch('/api/install-deps', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    btn.textContent = '安装成功，刷新页面';
+                    showToast(data.message, 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    btn.textContent = '重新安装';
+                    btn.disabled = false;
+                    showToast(data.message, 'error');
+                }
+            } catch (e) {
+                btn.textContent = '重新安装';
+                btn.disabled = false;
+                showToast('安装失败: ' + e.message, 'error');
+            }
+        });
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+            checkEnvironment();
+        });
+    </script>
+</body>
+</html>
