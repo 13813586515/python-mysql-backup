@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL 备份工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .card h2 {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #444;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #555;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+        
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .tag-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .tag-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .tag-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .tag-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .checkbox-item label {
+            cursor: pointer;
+            margin: 0;
+        }
+        
+        .dependency-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .dependency-item.installed {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .dependency-item.not-installed {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .nav-tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .nav-tab:hover {
+            color: #667eea;
+        }
+        
+        .nav-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .log-entry {
+            padding: 12px;
+            border-left: 4px solid #ddd;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .log-entry.info {
+            border-left-color: #17a2b8;
+        }
+        
+        .log-entry.success {
+            border-left-color: #28a745;
+        }
+        
+        .log-entry.error {
+            border-left-color: #dc3545;
+        }
+        
+        .log-entry.warning {
+            border-left-color: #ffc107;
+        }
+        
+        .log-time {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+        
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal-header {
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h3 {
+            font-size: 20px;
+        }
+        
+        .modal-body {
+            margin-bottom: 20px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗄️ MySQL 备份工具</h1>
+            <p>简单易用的 MySQL 数据库备份管理系统</p>
+        </header>
+        
+        <!-- 依赖检查提示 -->
+        <div id="dependencyAlert" class="alert alert-warning hidden">
+            <strong>⚠️ 环境依赖检查</strong>
+            <p>检测到部分依赖未安装，请先在"环境检测"页面安装依赖。</p>
+        </div>
+        
+        <!-- 导航标签 -->
+        <div class="nav-tabs">
+            <div class="nav-tab active" data-tab="dashboard">📊 概览</div>
+            <div class="nav-tab" data-tab="config">⚙️ 数据库配置</div>
+            <div class="nav-tab" data-tab="backup">💾 备份管理</div>
+            <div class="nav-tab" data-tab="logs">📋 备份日志</div>
+            <div class="nav-tab" data-tab="deps">🔧 环境检测</div>
+        </div>
+        
+        <!-- 概览页面 -->
+        <div id="dashboard" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3 id="statTotalBackups">0</h3>
+                    <p>总备份次数</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="statSuccessBackups">0</h3>
+                    <p>成功备份</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="statTotalFiles">0</h3>
+                    <p>备份文件数</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="statTotalSize">0 MB</h3>
+                    <p>总占用空间</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>最近备份记录</h2>
+                <div id="recentBackups">
+                    <div class="empty-state">
+                        <p>暂无备份记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 数据库配置页面 -->
+        <div id="config" class="tab-content">
+            <div class="card">
+                <h2>数据库连接配置</h2>
+                <div id="configAlert"></div>
+                
+                <form id="configForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dbHost">主机地址</label>
+                            <input type="text" id="dbHost" placeholder="localhost" value="localhost">
+                        </div>
+                        <div class="form-group">
+                            <label for="dbPort">端口</label>
+                            <input type="number" id="dbPort" placeholder="3306" value="3306">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dbUser">用户名</label>
+                            <input type="text" id="dbUser" placeholder="root" value="root">
+                        </div>
+                        <div class="form-group">
+                            <label for="dbPassword">密码</label>
+                            <input type="password" id="dbPassword" placeholder="请输入密码">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dbName">默认数据库（可选）</label>
+                        <input type="text" id="dbName" placeholder="留空表示备份所有数据库">
+                    </div>
+                    
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary" onclick="testConnection()">
+                            🔌 测试连接
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            💾 保存配置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 备份管理页面 -->
+        <div id="backup" class="tab-content">
+            <div class="card">
+                <h2>创建新备份</h2>
+                <div id="backupAlert"></div>
+                
+                <div class="form-group">
+                    <label>选择要备份的数据库</label>
+                    <div class="checkbox-group" id="databaseList">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="backupAll" checked>
+                            <label for="backupAll">备份所有数据库</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="compressBackup" checked>
+                        <label for="compressBackup">压缩备份文件（推荐）</label>
+                    </div>
+                </div>
+                
+                <button class="btn btn-success" onclick="createBackup()">
+                    🚀 开始备份
+                </button>
+            </div>
+            
+            <div class="card">
+                <h2>备份文件列表</h2>
+                <div class="btn-group" style="margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="loadBackupList()">
+                        🔄 刷新列表
+                    </button>
+                </div>
+                <div id="backupList">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>文件名</th>
+                                <th>数据库</th>
+                                <th>大小</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backupTableBody">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: #888;">
+                                    暂无备份文件
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日志页面 -->
+        <div id="logs" class="tab-content">
+            <div class="card">
+                <h2>备份日志</h2>
+                
+                <div class="form-row" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>选择日期</label>
+                        <select id="logDate" onchange="loadLogs()">
+                            <option value="">今天</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>日志级别</label>
+                        <select id="logLevel" onchange="loadLogs()">
+                            <option value="">全部</option>
+                            <option value="INFO">信息</option>
+                            <option value="SUCCESS">成功</option>
+                            <option value="WARNING">警告</option>
+                            <option value="ERROR">错误</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="logList">
+                    <div class="empty-state">
+                        <p>暂无日志记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 环境检测页面 -->
+        <div id="deps" class="tab-content">
+            <div class="card">
+                <h2>环境依赖检测</h2>
+                <div id="depsAlert"></div>
+                
+                <div id="dependencyList">
+                    <div class="dependency-item not-installed">
+                        <div>
+                            <strong>正在检查依赖...</strong>
+                        </div>
+                        <div class="loading"></div>
+                    </div>
+                </div>
+                
+                <div class="btn-group" style="margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="installDependencies()">
+                        📦 一键安装依赖
+                    </button>
+                    <button class="btn btn-secondary" onclick="checkDependencies()">
+                        🔄 重新检测
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 全局状态
+        let currentConfig = {};
+        let allDependenciesInstalled = false;
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initTabs();
+            checkDependencies();
+            loadConfig();
+            loadBackupList();
+            loadLogDates();
+            loadStats();
+        });
+        
+        // 初始化标签页
+        function initTabs() {
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const targetTab = this.dataset.tab;
+                    
+                    // 切换标签状态
+                    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // 切换内容
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    document.getElementById(targetTab).classList.add('active');
+                });
+            });
+        }
+        
+        // 显示提示
+        function showAlert(elementId, type, message) {
+            const alertEl = document.getElementById(elementId);
+            alertEl.className = `alert alert-${type}`;
+            alertEl.innerHTML = message;
+            alertEl.classList.remove('hidden');
+            
+            setTimeout(() => {
+                alertEl.classList.add('hidden');
+            }, 5000);
+        }
+        
+        // 检查依赖
+        async function checkDependencies() {
+            const listEl = document.getElementById('dependencyList');
+            listEl.innerHTML = '<div class="dependency-item"><div><strong>正在检查依赖...</strong></div><div class="loading"></div></div>';
+            
+            try {
+                const response = await fetch('/api/check-dependencies');
+                const data = await response.json();
+                
+                if (data.success) {
+                    allDependenciesInstalled = data.all_installed;
+                    
+                    // 显示/隐藏依赖警告
+                    const alertEl = document.getElementById('dependencyAlert');
+                    if (!data.all_installed) {
+                        alertEl.classList.remove('hidden');
+                    } else {
+                        alertEl.classList.add('hidden');
+                    }
+                    
+                    // 渲染依赖列表
+                    let html = '';
+                    for (const [key, dep] of Object.entries(data.dependencies)) {
+                        const statusClass = dep.installed ? 'installed' : 'not-installed';
+                        const statusIcon = dep.installed ? '✅' : '❌';
+                        const versionInfo = dep.version ? `v${dep.version}` : '未安装';
+                        
+                        html += `
+                            <div class="dependency-item ${statusClass}">
+                                <div>
+                                    <strong>${statusIcon} ${dep.name}</strong>
+                                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                        当前: ${versionInfo} | 需要: ${dep.required}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    listEl.innerHTML = html;
+                }
+            } catch (error) {
+                listEl.innerHTML = `<div class="alert alert-error">检查失败: ${error.message}</div>`;
+            }
+        }
+        
+        // 安装依赖
+        async function installDependencies() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 安装中...';
+            
+            try {
+                const response = await fetch('/api/install-dependencies', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('depsAlert', 'success', '依赖安装成功！请刷新页面。');
+                    checkDependencies();
+                } else {
+                    showAlert('depsAlert', 'error', `安装失败: ${data.message}`);
+                }
+            } catch (error) {
+                showAlert('depsAlert', 'error', `安装异常: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📦 一键安装依赖';
+            }
+        }
+        
+        // 加载配置
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                
+                if (data.success && data.config) {
+                    currentConfig = data.config;
+                    document.getElementById('dbHost').value = data.config.host || 'localhost';
+                    document.getElementById('dbPort').value = data.config.port || 3306;
+                    document.getElementById('dbUser').value = data.config.user || 'root';
+                    document.getElementById('dbName').value = data.config.database || '';
+                    if (data.config.password) {
+                        document.getElementById('dbPassword').value = '******';
+                    }
+                    
+                    // 加载数据库列表
+                    loadDatabaseList();
+                }
+            } catch (error) {
+                console.error('加载配置失败:', error);
+            }
+        }
+        
+        // 保存配置
+        document.getElementById('configForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const config = {
+                host: document.getElementById('dbHost').value,
+                port: parseInt(document.getElementById('dbPort').value),
+                user: document.getElementById('dbUser').value,
+                password: document.getElementById('dbPassword').value,
+                database: document.getElementById('dbName').value
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('configAlert', 'success', '配置保存成功！');
+                    currentConfig = config;
+                    loadDatabaseList();
+                } else {
+                    showAlert('configAlert', 'error', `保存失败: ${data.message}`);
+                }
+            } catch (error) {
+                showAlert('configAlert', 'error', `保存异常: ${error.message}`);
+            }
+        });
+        
+        // 测试连接
+        async function testConnection() {
+            const config = {
+                host: document.getElementById('dbHost').value,
+                port: parseInt(document.getElementById('dbPort').value),
+                user: document.getElementById('dbUser').value,
+                password: document.getElementById('dbPassword').value,
+                database: document.getElementById('dbName').value
+            };
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 测试中...';
+            
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('configAlert', 'success', data.message);
+                } else {
+                    showAlert('configAlert', 'error', `连接失败: ${data.message}`);
+                }
+            } catch (error) {
+                showAlert('configAlert', 'error', `测试异常: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔌 测试连接';
+            }
+        }
+        
+        // 加载数据库列表
+        async function loadDatabaseList() {
+            try {
+                const response = await fetch('/api/databases');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const listEl = document.getElementById('databaseList');
+                    let html = `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="backupAll" checked onchange="toggleBackupAll()">
+                            <label for="backupAll">备份所有数据库</label>
+                        </div>
+                    `;
+                    
+                    data.databases.forEach(db => {
+                        html += `
+                            <div class="checkbox-item">
+                                <input type="checkbox" class="db-checkbox" value="${db}" disabled>
+                                <label>${db}</label>
+                            </div>
+                        `;
+                    });
+                    
+                    listEl.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('加载数据库列表失败:', error);
+            }
+        }
+        
+        // 切换备份所有
+        function toggleBackupAll() {
+            const backupAll = document.getElementById('backupAll').checked;
+            document.querySelectorAll('.db-checkbox').forEach(cb => {
+                cb.disabled = backupAll;
+                if (backupAll) {
+                    cb.checked = false;
+                }
+            });
+        }
+        
+        // 创建备份
+        async function createBackup() {
+            const backupAll = document.getElementById('backupAll').checked;
+            const compress = document.getElementById('compressBackup').checked;
+            
+            let databases = [];
+            if (!backupAll) {
+                document.querySelectorAll('.db-checkbox:checked').forEach(cb => {
+                    databases.push(cb.value);
+                });
+                if (databases.length === 0) {
+                    showAlert('backupAlert', 'warning', '请至少选择一个数据库');
+                    return;
+                }
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 备份中...';
+            
+            try {
+                const response = await fetch('/api/backup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ databases: backupAll ? [] : databases, compress })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('backupAlert', 'success', data.message);
+                    loadBackupList();
+                    loadStats();
+                } else {
+                    showAlert('backupAlert', 'error', `备份失败: ${data.message}`);
+                }
+            } catch (error) {
+                showAlert('backupAlert', 'error', `备份异常: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 开始备份';
+            }
+        }
+        
+        // 加载备份列表
+        async function loadBackupList() {
+            try {
+                const response = await fetch('/api/backups');
+                const data = await response.json();
+                
+                const tbody = document.getElementById('backupTableBody');
+                
+                if (data.success && data.backups.length > 0) {
+                    let html = '';
+                    data.backups.forEach(backup => {
+                        html += `
+                            <tr>
+                                <td>${backup.name}</td>
+                                <td>${backup.database}</td>
+                                <td>${backup.size_formatted}</td>
+                                <td>${backup.created}</td>
+                                <td>
+                                    <a href="/api/download/${encodeURIComponent(backup.name)}" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">
+                                        ⬇️ 下载
+                                    </a>
+                                    <button class="btn btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteBackup('${backup.name}')">
+                                        🗑️ 删除
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                    
+                    // 更新最近备份
+                    updateRecentBackups(data.backups.slice(0, 5));
+                } else {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: #888;">
+                                暂无备份文件
+                            </td>
+                        </tr>
+                    `;
+                }
+            } catch (error) {
+                console.error('加载备份列表失败:', error);
+            }
+        }
+        
+        // 更新最近备份显示
+        function updateRecentBackups(backups) {
+            const container = document.getElementById('recentBackups');
+            if (backups.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>暂无备份记录</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<table><thead><tr><th>文件名</th><th>大小</th><th>创建时间</th></tr></thead><tbody>';
+            backups.forEach(backup => {
+                html += `
+                    <tr>
+                        <td>${backup.name}</td>
+                        <td>${backup.size_formatted}</td>
+                        <td>${backup.created}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+        
+        // 删除备份
+        async function deleteBackup(filename) {
+            if (!confirm(`确定要删除备份文件 "${filename}" 吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/delete/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    loadBackupList();
+                    loadStats();
+                } else {
+                    alert(`删除失败: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`删除异常: ${error.message}`);
+            }
+        }
+        
+        // 加载日志日期
+        async function loadLogDates() {
+            try {
+                const response = await fetch('/api/logs/dates');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const select = document.getElementById('logDate');
+                    let html = '<option value="">今天</option>';
+                    data.dates.forEach(date => {
+                        const formatted = `${date.substr(0,4)}-${date.substr(4,2)}-${date.substr(6,2)}`;
+                        html += `<option value="${date}">${formatted}</option>`;
+                    });
+                    select.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('加载日志日期失败:', error);
+            }
+        }
+        
+        // 加载日志
+        async function loadLogs() {
+            const date = document.getElementById('logDate').value;
+            const level = document.getElementById('logLevel').value;
+            
+            try {
+                const url = `/api/logs?limit=100${date ? '&date=' + date : ''}${level ? '&level=' + level : ''}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const container = document.getElementById('logList');
+                
+                if (data.success && data.logs.length > 0) {
+                    let html = '';
+                    data.logs.forEach(log => {
+                        const levelClass = log.level.toLowerCase();
+                        html += `
+                            <div class="log-entry ${levelClass}">
+                                <div class="log-time">${log.timestamp} | ${log.level}</div>
+                                <div>${log.message}</div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p>暂无日志记录</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('加载日志失败:', error);
+            }
+        }
+        
+        // 加载统计
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('statTotalBackups').textContent = data.stats.total_backups;
+                    document.getElementById('statSuccessBackups').textContent = data.stats.successful_backups;
+                    document.getElementById('statTotalFiles').textContent = data.stats.total_files;
+                    document.getElementById('statTotalSize').textContent = data.stats.total_size_formatted || '0 MB';
+                }
+            } catch (error) {
+                console.error('加载统计失败:', error);
+            }
+        }
+    </script>
+</body>
+</html>

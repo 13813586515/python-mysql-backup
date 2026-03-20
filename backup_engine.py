@@ -1,0 +1,289 @@
+import pymysql
+import gzip
+import os
+import time
+from datetime import datetime
+
+class MySQLBackupEngine:
+    """纯Python实现的MySQL备份引擎，无需依赖mysqldump和gzip命令"""
+    
+    def __init__(self, host='localhost', port=3306, user='root', password='', database=None):
+        self.host = host
+        self.port = port
+        self.user = user
+        self.password = password
+        self.database = database
+        self.connection = None
+        
+    def connect(self):
+        """建立数据库连接"""
+        try:
+            self.connection = pymysql.connect(
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.database if self.database else None,
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
+            )
+            return True
+        except Exception as e:
+            raise Exception(f"数据库连接失败: {str(e)}")
+    
+    def close(self):
+        """关闭数据库连接"""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+    
+    def get_databases(self):
+        """获取所有数据库列表"""
+        if not self.connection:
+            self.connect()
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SHOW DATABASES")
+                databases = [row['Database'] for row in cursor.fetchall()]
+                # 过滤系统数据库
+                system_dbs = ['information_schema', 'mysql', 'performance_schema', 'sys']
+                return [db for db in databases if db not in system_dbs]
+        except Exception as e:
+            raise Exception(f"获取数据库列表失败: {str(e)}")
+    
+    def get_tables(self, database=None):
+        """获取指定数据库的所有表"""
+        if not self.connection:
+            self.connect()
+        
+        db = database or self.database
+        if not db:
+            raise Exception("未指定数据库")
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(f"USE `{db}`")
+                cursor.execute("SHOW TABLES")
+                tables = [list(row.values())[0] for row in cursor.fetchall()]
+                return tables
+        except Exception as e:
+            raise Exception(f"获取表列表失败: {str(e)}")
+    
+    def get_table_structure(self, table_name, database=None):
+        """获取表结构"""
+        if not self.connection:
+            self.connect()
+        
+        db = database or self.database
+        if not db:
+            raise Exception("未指定数据库")
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(f"USE `{db}`")
+                cursor.execute(f"SHOW CREATE TABLE `{table_name}`")
+                result = cursor.fetchone()
+                return result['Create Table']
+        except Exception as e:
+            raise Exception(f"获取表结构失败: {str(e)}")
+    
+    def get_table_data(self, table_name, database=None, batch_size=1000):
+        """获取表数据，使用生成器分批返回"""
+        if not self.connection:
+            self.connect()
+        
+        db = database or self.database
+        if not db:
+            raise Exception("未指定数据库")
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(f"USE `{db}`")
+                cursor.execute(f"SELECT * FROM `{table_name}`")
+                
+                # 获取列名
+                columns = [desc[0] for desc in cursor.description]
+                
+                while True:
+                    rows = cursor.fetchmany(batch_size)
+                    if not rows:
+                        break
+                    yield columns, rows
+        except Exception as e:
+            raise Exception(f"获取表数据失败: {str(e)}")
+    
+    def backup_database(self, database=None, output_path=None, compress=True):
+        """
+        备份单个数据库
+        :param database: 数据库名
+        :param output_path: 输出文件路径
+        :param compress: 是否压缩
+        :return: 备份文件路径
+        """
+        db = database or self.database
+        if not db:
+            raise Exception("未指定数据库")
+        
+        if not self.connection:
+            self.connect()
+        
+        # 生成默认输出路径
+        if not output_path:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{db}_{timestamp}.sql"
+            if compress:
+                filename += ".gz"
+            output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups', filename)
+        
+        # 确保目录存在
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        try:
+            tables = self.get_tables(db)
+            
+            # 打开文件（根据是否压缩选择不同的打开方式）
+            if compress:
+                f = gzip.open(output_path, 'wt', encoding='utf-8')
+            else:
+                f = open(output_path, 'w', encoding='utf-8')
+            
+            try:
+                # 写入文件头
+                f.write(f"-- MySQL Backup generated by Python MySQL Backup Tool\n")
+                f.write(f"-- Database: {db}\n")
+                f.write(f"-- Backup Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"-- Server Version: {self.get_server_version()}\n")
+                f.write("SET FOREIGN_KEY_CHECKS=0;\n")
+                f.write("SET UNIQUE_CHECKS=0;\n")
+                f.write("SET AUTOCOMMIT=0;\n\n")
+                
+                # 备份每个表
+                for table in tables:
+                    f.write(f"\n-- ----------------------------\n")
+                    f.write(f"-- Table structure for `{table}`\n")
+                    f.write(f"-- ----------------------------\n\n")
+                    
+                    # 写入表结构
+                    structure = self.get_table_structure(table, db)
+                    f.write(f"DROP TABLE IF EXISTS `{table}`;\n")
+                    f.write(f"{structure};\n\n")
+                    
+                    # 写入表数据
+                    f.write(f"-- ----------------------------\n")
+                    f.write(f"-- Records of `{table}`\n")
+                    f.write(f"-- ----------------------------\n\n")
+                    
+                    row_count = 0
+                    for columns, rows in self.get_table_data(table, db):
+                        if rows:
+                            # 构建INSERT语句
+                            columns_str = ', '.join([f'`{col}`' for col in columns])
+                            
+                            for row in rows:
+                                values = []
+                                for col in columns:
+                                    val = row.get(col)
+                                    if val is None:
+                                        values.append('NULL')
+                                    elif isinstance(val, (int, float)):
+                                        values.append(str(val))
+                                    else:
+                                        # 转义特殊字符
+                                        val_str = str(val).replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '\\r')
+                                        values.append(f"'{val_str}'")
+                                
+                                values_str = ', '.join(values)
+                                f.write(f"INSERT INTO `{table}` ({columns_str}) VALUES ({values_str});\n")
+                                row_count += 1
+                    
+                    if row_count > 0:
+                        f.write(f"\n-- {row_count} rows dumped from table `{table}`\n")
+                
+                # 写入文件尾
+                f.write("\nSET FOREIGN_KEY_CHECKS=1;\n")
+                f.write("SET UNIQUE_CHECKS=1;\n")
+                f.write("COMMIT;\n")
+                
+            finally:
+                f.close()
+            
+            return output_path
+            
+        except Exception as e:
+            # 如果备份失败，删除可能已创建的文件
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            raise Exception(f"备份数据库失败: {str(e)}")
+    
+    def backup_multiple_databases(self, databases=None, output_dir=None, compress=True):
+        """
+        备份多个数据库
+        :param databases: 数据库列表，None表示备份所有
+        :param output_dir: 输出目录
+        :param compress: 是否压缩
+        :return: 备份文件列表
+        """
+        if not self.connection:
+            self.connect()
+        
+        # 获取要备份的数据库列表
+        if databases is None:
+            databases = self.get_databases()
+        elif isinstance(databases, str):
+            databases = [databases]
+        
+        # 生成默认输出目录
+        if not output_dir:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups', timestamp)
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        backup_files = []
+        for db in databases:
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{db}_{timestamp}.sql"
+                if compress:
+                    filename += ".gz"
+                output_path = os.path.join(output_dir, filename)
+                
+                # 临时切换数据库
+                old_db = self.database
+                self.database = db
+                
+                backup_file = self.backup_database(db, output_path, compress)
+                backup_files.append(backup_file)
+                
+                # 恢复原来的数据库设置
+                self.database = old_db
+                
+            except Exception as e:
+                print(f"备份数据库 {db} 失败: {str(e)}")
+                continue
+        
+        return backup_files
+    
+    def get_server_version(self):
+        """获取MySQL服务器版本"""
+        if not self.connection:
+            self.connect()
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT VERSION() as version")
+                result = cursor.fetchone()
+                return result['version']
+        except:
+            return "Unknown"
+    
+    def test_connection(self):
+        """测试数据库连接"""
+        try:
+            self.connect()
+            version = self.get_server_version()
+            self.close()
+            return True, f"连接成功，MySQL版本: {version}"
+        except Exception as e:
+            return False, str(e)
