@@ -1,0 +1,7 @@
+{
+  "host": "192.168.0.45",
+  "port": 3306,
+  "user": "root",
+  "password": "lampo_test_2022",
+  "database": ""
+}
