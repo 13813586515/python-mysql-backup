@@ -63,7 +63,7 @@ class BackupEngine:
     def _quote_identifier(self, identifier: str) -> str:
         return f'`{identifier.replace("`", "``")}`'
 
-    def _escape_value(self, value: Any, connection) -> str:
+    def _escape_value(self, value: Any) -> str:
         if value is None:
             return 'NULL'
         if isinstance(value, (int, float)):
@@ -76,7 +76,17 @@ class BackupEngine:
             return f"'{value.strftime('%Y-%m-%d')}'"
         if isinstance(value, datetime.timedelta):
             return f"'{str(value)}'"
-        return f"'{connection.converter.escape(str(value))}'"
+        
+        str_value = str(value)
+        escaped = str_value.replace('\\', '\\\\')
+        escaped = escaped.replace("'", "\\'")
+        escaped = escaped.replace('"', '\\"')
+        escaped = escaped.replace('\n', '\\n')
+        escaped = escaped.replace('\r', '\\r')
+        escaped = escaped.replace('\x00', '\\0')
+        escaped = escaped.replace('\x1a', '\\Z')
+        
+        return f"'{escaped}'"
 
     def _get_create_table(self, cursor, table_name: str) -> str:
         cursor.execute(f"SHOW CREATE TABLE {self._quote_identifier(table_name)}")
@@ -159,7 +169,7 @@ class BackupEngine:
                         insert_batch = []
                         
                         for row in select_cursor:
-                            values = [self._escape_value(val, connection) for val in row]
+                            values = [self._escape_value(val) for val in row]
                             insert_batch.append(f"({', '.join(values)})")
                             
                             if len(insert_batch) >= batch_size:
@@ -237,18 +247,22 @@ class BackupEngine:
         return backup_files
 
     def cleanup_old_backups(self, retention_days: int) -> int:
-        if retention_days <= 0:
-            logger.info("保留天数设置为0，跳过清理")
-            return 0
-        
-        cutoff_time = datetime.datetime.now() - datetime.timedelta(days=retention_days)
         deleted_count = 0
         
         if not os.path.exists(self.backup_path):
             logger.info(f"备份路径不存在: {self.backup_path}")
             return 0
         
-        logger.info(f"开始清理 {retention_days} 天前的备份文件...")
+        if retention_days < 0:
+            logger.info(f"保留天数为负数 ({retention_days})，将清理所有备份文件")
+            cutoff_time = datetime.datetime.now() + datetime.timedelta(days=1)
+        elif retention_days == 0:
+            logger.info("保留天数设置为0，将清理所有备份文件（用于测试）")
+            cutoff_time = datetime.datetime.now() + datetime.timedelta(days=1)
+        else:
+            cutoff_time = datetime.datetime.now() - datetime.timedelta(days=retention_days)
+            logger.info(f"开始清理 {retention_days} 天前的备份文件...")
+        
         logger.info(f"截止时间: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         for filename in os.listdir(self.backup_path):

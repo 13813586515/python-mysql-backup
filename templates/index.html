@@ -10,7 +10,7 @@
     <div class="container">
         <header class="header">
             <h1>MySQL 数据库备份工具</h1>
-            <p class="subtitle">可视化数据库备份管理系统</p>
+            <p class="subtitle">可视化数据库备份管理系统 - 支持多数据库配置</p>
         </header>
 
         <nav class="nav-tabs">
@@ -23,49 +23,73 @@
         <main class="main-content">
             <section id="config-tab" class="tab-content active">
                 <div class="card">
-                    <h2>数据库连接配置</h2>
-                    <form id="config-form" class="form-grid">
-                        <div class="form-group">
-                            <label for="db_host">数据库主机</label>
-                            <input type="text" id="db_host" name="db_host" placeholder="localhost">
-                        </div>
-                        <div class="form-group">
-                            <label for="db_port">端口</label>
-                            <input type="number" id="db_port" name="db_port" placeholder="3306">
-                        </div>
-                        <div class="form-group">
-                            <label for="db_user">用户名</label>
-                            <input type="text" id="db_user" name="db_user" placeholder="root">
-                        </div>
-                        <div class="form-group">
-                            <label for="db_password">密码</label>
-                            <input type="password" id="db_password" name="db_password" placeholder="输入密码">
-                        </div>
-                    </form>
-                    
-                    <div class="form-group full-width database-selector" id="database-selection" style="display: none;">
-                        <label>选择要备份的数据库 <span class="hint-text">(可多选)</span></label>
-                        <div class="checkbox-group" id="database-list">
-                            <p class="hint">请先测试连接以加载数据库列表</p>
-                        </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2>数据库配置管理</h2>
+                        <button type="button" class="btn btn-primary" id="add-config-btn">
+                            + 新增配置
+                        </button>
                     </div>
                     
-                    <div class="button-group">
-                        <button type="button" class="btn btn-secondary" id="test-connection-btn">
-                            <span class="btn-text">测试连接</span>
-                            <span class="btn-loader" style="display: none;">测试中...</span>
-                        </button>
-                        <button type="button" class="btn btn-primary" id="save-config-btn">
-                            <span class="btn-text">保存配置</span>
-                            <span class="btn-loader" style="display: none;">保存中...</span>
-                        </button>
+                    <div id="config-list-container" class="config-list">
+                        <p class="text-center text-muted">加载中...</p>
+                    </div>
+                </div>
+
+                <div id="config-form-modal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3 id="modal-title">新增数据库配置</h3>
+                            <button type="button" class="btn-close" id="close-modal-btn">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="config-form" class="form-grid">
+                                <div class="form-group full-width">
+                                    <label for="config_name">配置名称 <span class="required">*</span></label>
+                                    <input type="text" id="config_name" name="name" placeholder="例如：生产库、测试库、开发库" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="config_db_host">数据库主机 <span class="required">*</span></label>
+                                    <input type="text" id="config_db_host" name="db_host" placeholder="localhost">
+                                </div>
+                                <div class="form-group">
+                                    <label for="config_db_port">端口 <span class="required">*</span></label>
+                                    <input type="number" id="config_db_port" name="db_port" placeholder="3306" value="3306">
+                                </div>
+                                <div class="form-group">
+                                    <label for="config_db_user">用户名 <span class="required">*</span></label>
+                                    <input type="text" id="config_db_user" name="db_user" placeholder="root" value="root">
+                                </div>
+                                <div class="form-group">
+                                    <label for="config_db_password">密码</label>
+                                    <input type="password" id="config_db_password" name="db_password" placeholder="输入密码">
+                                </div>
+                            </form>
+                            
+                            <div class="form-group full-width database-selector" id="config-database-selection" style="display: none; margin-top: 20px;">
+                                <label>选择要备份的数据库 <span class="hint-text">(连接成功后可选择)</span></label>
+                                <div class="checkbox-group" id="config-database-list">
+                                    <p class="hint">请先测试连接以加载数据库列表</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="test-current-connection-btn">
+                                <span class="btn-text">测试连接</span>
+                                <span class="btn-loader" style="display: none;">测试中...</span>
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="cancel-modal-btn">取消</button>
+                            <button type="button" class="btn btn-primary" id="save-config-modal-btn">
+                                <span class="btn-text">保存</span>
+                                <span class="btn-loader" style="display: none;">保存中...</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
 
             <section id="strategy-tab" class="tab-content">
                 <div class="card">
-                    <h2>备份策略设置</h2>
+                    <h2>备份策略设置（全局）</h2>
                     <form id="strategy-form" class="form-grid">
                         <div class="form-group full-width">
                             <label for="backup_path">备份存储路径</label>
@@ -73,8 +97,10 @@
                         </div>
                         <div class="form-group">
                             <label for="retention_days">备份保留天数</label>
-                            <input type="number" id="retention_days" name="retention_days" min="1" max="365" placeholder="30">
-                            <small class="form-hint">超过此天数的备份将自动清理</small>
+                            <input type="number" id="retention_days" name="retention_days" min="0" max="365" placeholder="30">
+                            <small class="form-hint">
+                                超过此天数的备份将自动清理。设置为 0 表示清理所有文件（用于测试）
+                            </small>
                         </div>
                         <div class="form-group">
                             <label for="backup_mode">备份模式</label>
@@ -82,6 +108,7 @@
                                 <option value="manual">手动备份</option>
                                 <option value="scheduled">定时备份</option>
                             </select>
+                            <small class="form-hint">定时备份将使用当前选中的数据库配置</small>
                         </div>
                         <div class="form-group" id="schedule-type-group" style="display: none;">
                             <label for="schedule_type">定时方式</label>
@@ -101,8 +128,10 @@
                     </form>
                     
                     <div class="card card-notice" style="margin-top: 20px; background: #f8f9fa;">
-                        <h3 style="font-size: 14px; margin-bottom: 10px; color: #495057;">手动清理</h3>
-                        <p class="form-hint" style="margin-bottom: 10px;">点击按钮立即清理超过保留天数的旧备份文件，可用于测试清理功能是否正常工作</p>
+                        <h3 style="font-size: 14px; margin-bottom: 10px; color: #495057;">手动清理测试</h3>
+                        <p class="form-hint" style="margin-bottom: 10px;">
+                            点击按钮立即按照"备份保留天数"设置清理旧备份文件。设置为 0 天将清理所有文件。
+                        </p>
                         <button type="button" class="btn btn-warning" id="manual-cleanup-btn">
                             <span class="btn-text">手动清理旧备份</span>
                             <span class="btn-loader" style="display: none;">清理中...</span>
@@ -122,6 +151,23 @@
                 <div class="card">
                     <h2>任务执行控制台</h2>
                     
+                    <div class="card card-notice" style="margin-bottom: 20px; background: #e8f4fd;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px;">
+                            <div>
+                                <strong>当前使用的数据库配置：</strong>
+                                <div id="current-config-info" class="info-text" style="margin-top: 5px;">
+                                    请先在"数据库配置"页面添加并选择一个配置
+                                </div>
+                            </div>
+                            <div>
+                                <label for="config-selector" style="font-size: 12px; color: #666; display: block; margin-bottom: 5px;">快速切换配置：</label>
+                                <select id="config-selector" class="form-select" style="min-width: 200px;">
+                                    <option value="">-- 选择配置 --</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="status-panel">
                         <div class="status-item">
                             <span class="status-label">任务状态:</span>
@@ -140,18 +186,6 @@
                         <div class="status-item" id="next-run-item" style="display: none;">
                             <span class="status-label">下次执行:</span>
                             <span class="status-indicator" id="next-run-time">--</span>
-                        </div>
-                    </div>
-                    
-                    <div class="card card-notice" style="margin-top: 15px; background: #e8f4fd;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                            <div>
-                                <strong>当前备份计划：</strong>
-                                <span id="selected-dbs-info" class="info-text">请先在数据库配置中选择要备份的数据库</span>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-secondary" id="refresh-dbs-info-btn">
-                                刷新
-                            </button>
                         </div>
                     </div>
 
