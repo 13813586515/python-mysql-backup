@@ -528,9 +528,17 @@ def download_backup():
 @app.route('/api/backups/cleanup', methods=['POST'])
 def manual_cleanup():
     try:
+        request_data = request.get_json() or {}
         all_configs = load_all_configs()
         global_config = all_configs.get('global_config', {})
-        retention_days = global_config.get('retention_days', 30)
+        
+        if 'retention_days' in request_data:
+            retention_days = request_data.get('retention_days')
+        else:
+            retention_days = global_config.get('retention_days', 30)
+        
+        if isinstance(retention_days, str):
+            retention_days = int(retention_days) if retention_days.isdigit() else 30
         
         engine = BackupEngine({
             'backup_path': global_config.get('backup_path', './backups')
