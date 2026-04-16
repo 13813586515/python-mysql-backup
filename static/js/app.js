@@ -306,8 +306,34 @@ function editConfig(configId) {
     form.config_db_user.value = config.db_user || 'root';
     form.config_db_password.value = '********';
     
-    document.getElementById('config-database-selection').style.display = 'none';
-    document.getElementById('config-database-list').innerHTML = '<p class="hint">请先测试连接以加载数据库列表</p>';
+    const dbSelection = document.getElementById('config-database-selection');
+    const dbList = document.getElementById('config-database-list');
+    
+    const selectedDbs = config.selected_databases || [];
+    if (selectedDbs.length > 0) {
+        dbSelection.style.display = 'block';
+        dbList.innerHTML = `
+            <div class="select-all-container">
+                <input type="checkbox" id="config-select-all-dbs" onchange="toggleConfigSelectAll(this)">
+                <label for="config-select-all-dbs">全选/取消全选</label>
+            </div>
+            <div class="checkbox-group" style="padding-top: 5px;">
+                ${selectedDbs.map(db => `
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="config-db-${db}" name="config_selected_databases" value="${db}" checked
+                            onchange="updateConfigSelectAllStatus()">
+                        <label for="config-db-${db}">${db}</label>
+                    </div>
+                `).join('')}
+            </div>
+            <p class="hint" style="margin-top: 10px; font-size: 12px;">
+                提示：点击 "测试连接" 按钮可重新加载完整的数据库列表
+            </p>
+        `;
+    } else {
+        dbSelection.style.display = 'block';
+        dbList.innerHTML = '<p class="hint">请点击 "测试连接" 按钮加载数据库列表</p>';
+    }
     
     openModal();
 }
@@ -650,7 +676,8 @@ async function manualCleanup() {
     setButtonLoading('manual-cleanup-btn', true);
 
     const result = await fetchApi('/api/backups/cleanup', {
-        method: 'POST'
+        method: 'POST',
+        body: JSON.stringify({ retention_days: retentionDays })
     });
 
     setButtonLoading('manual-cleanup-btn', false);
