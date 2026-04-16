@@ -49,7 +49,7 @@ class BackupEngine:
                 password=self.password,
                 charset=self.charset
             )
-            cursor = connection.cursor()
+            cursor = connection.cursor(buffered=True)
             cursor.execute("SHOW DATABASES")
             databases = [db[0] for db in cursor.fetchall() 
                         if db[0] not in ('information_schema', 'mysql', 'performance_schema', 'sys')]
@@ -63,7 +63,7 @@ class BackupEngine:
     def _quote_identifier(self, identifier: str) -> str:
         return f'`{identifier.replace("`", "``")}`'
 
-    def _escape_value(self, value: Any, cursor) -> str:
+    def _escape_value(self, value: Any, connection) -> str:
         if value is None:
             return 'NULL'
         if isinstance(value, (int, float)):
@@ -76,11 +76,12 @@ class BackupEngine:
             return f"'{value.strftime('%Y-%m-%d')}'"
         if isinstance(value, datetime.timedelta):
             return f"'{str(value)}'"
-        return f"'{cursor._connection.converter.escape(str(value))}'"
+        return f"'{connection.converter.escape(str(value))}'"
 
     def _get_create_table(self, cursor, table_name: str) -> str:
         cursor.execute(f"SHOW CREATE TABLE {self._quote_identifier(table_name)}")
-        return cursor.fetchone()[1]
+        result = cursor.fetchone()
+        return result[1] if result else ''
 
     def _get_table_columns(self, cursor, table_name: str) -> List[str]:
         cursor.execute(f"DESCRIBE {self._quote_identifier(table_name)}")
@@ -88,11 +89,14 @@ class BackupEngine:
 
     def _get_table_count(self, cursor, table_name: str) -> int:
         cursor.execute(f"SELECT COUNT(*) FROM {self._quote_identifier(table_name)}")
-        return cursor.fetchone()[0]
+        result = cursor.fetchone()
+        return result[0] if result else 0
 
-    def _backup_database(self, database: str, progress_callback=None) -> str:
+    def _backup_database(self, database: str, progress_callback=None, db_index: int = 0, total_dbs: int = 1) -> str:
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         backup_file = os.path.join(self.backup_path, f'{database}_{timestamp}.sql.gz')
+        
+        logger.info(f"[{db_index + 1}/{total_dbs}] 开始备份数据库: {database}")
         
         connection = mysql.connector.connect(
             host=self.host,
@@ -103,7 +107,7 @@ class BackupEngine:
             charset=self.charset
         )
         
-        cursor = connection.cursor()
+        cursor = connection.cursor(buffered=True)
         
         try:
             with gzip.open(backup_file, 'wt', encoding='utf-8') as f:
@@ -119,10 +123,18 @@ class BackupEngine:
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 total_tables = len(tables)
+                logger.info(f"数据库 {database} 包含 {total_tables} 个表")
+                
                 for idx, table_name in enumerate(tables, 1):
-                    logger.info(f"正在备份表: {table_name} ({idx}/{total_tables})")
+                    logger.info(f"[{db_index + 1}/{total_dbs}] 正在备份 {database}.{table_name} ({idx}/{total_tables})")
+                    
                     if progress_callback:
-                        progress_callback(idx, total_tables, f"正在备份表: {table_name}")
+                        overall_progress = int((db_index / total_dbs) * 100 + (idx / total_tables / total_dbs) * 100)
+                        progress_callback(
+                            overall_progress, 
+                            100, 
+                            f"正在备份: {database}.{table_name} ({idx}/{total_tables})"
+                        )
                     
                     f.write(f"-- Table structure for table {self._quote_identifier(table_name)}\n")
                     f.write("DROP TABLE IF EXISTS " + self._quote_identifier(table_name) + ";\n")
@@ -138,13 +150,16 @@ class BackupEngine:
                     row_count = self._get_table_count(cursor, table_name)
                     
                     if row_count > 0:
-                        cursor.execute(f"SELECT {column_list} FROM {self._quote_identifier(table_name)}")
+                        logger.info(f"  表 {table_name} 包含 {row_count} 条数据")
+                        
+                        select_cursor = connection.cursor(buffered=True)
+                        select_cursor.execute(f"SELECT {column_list} FROM {self._quote_identifier(table_name)}")
                         
                         batch_size = 1000
                         insert_batch = []
                         
-                        for row in cursor:
-                            values = [self._escape_value(val, cursor) for val in row]
+                        for row in select_cursor:
+                            values = [self._escape_value(val, connection) for val in row]
                             insert_batch.append(f"({', '.join(values)})")
                             
                             if len(insert_batch) >= batch_size:
@@ -155,6 +170,8 @@ class BackupEngine:
                         if insert_batch:
                             f.write(f"INSERT INTO {self._quote_identifier(table_name)} ({column_list}) VALUES\n")
                             f.write(',\n'.join(insert_batch) + ";\n")
+                        
+                        select_cursor.close()
                     
                     f.write("\n")
                 
@@ -163,7 +180,7 @@ class BackupEngine:
             cursor.close()
             connection.close()
             
-            logger.info(f"数据库 {database} 备份完成: {backup_file}")
+            logger.info(f"[{db_index + 1}/{total_dbs}] 数据库 {database} 备份完成: {backup_file}")
             return backup_file
             
         except Exception as e:
@@ -171,38 +188,68 @@ class BackupEngine:
             connection.close()
             if os.path.exists(backup_file):
                 os.remove(backup_file)
+            logger.error(f"[{db_index + 1}/{total_dbs}] 数据库 {database} 备份失败: {str(e)}")
             raise e
 
     def backup(self, databases: Optional[List[str]] = None, progress_callback=None) -> List[str]:
         backup_files = []
         
-        if databases:
-            for db in databases:
-                logger.info(f"开始备份数据库: {db}")
-                backup_file = self._backup_database(db, progress_callback)
+        if databases and len(databases) > 0:
+            total_dbs = len(databases)
+            logger.info(f"开始备份 {total_dbs} 个数据库: {', '.join(databases)}")
+            
+            for idx, db in enumerate(databases):
+                if progress_callback:
+                    progress_callback(
+                        int((idx / total_dbs) * 100),
+                        100,
+                        f"准备备份数据库: {db} ({idx + 1}/{total_dbs})"
+                    )
+                
+                backup_file = self._backup_database(db, progress_callback, idx, total_dbs)
                 backup_files.append(backup_file)
-        elif self.database:
-            logger.info(f"开始备份数据库: {self.database}")
-            backup_file = self._backup_database(self.database, progress_callback)
-            backup_files.append(backup_file)
+            
+            logger.info(f"所有数据库备份完成，共生成 {len(backup_files)} 个备份文件")
         else:
+            logger.info("未指定数据库，获取所有可用数据库...")
             all_databases = self.get_databases()
-            for db in all_databases:
-                logger.info(f"开始备份数据库: {db}")
-                backup_file = self._backup_database(db, progress_callback)
+            
+            if not all_databases:
+                logger.warning("未找到任何可用数据库")
+                return []
+            
+            total_dbs = len(all_databases)
+            logger.info(f"找到 {total_dbs} 个数据库: {', '.join(all_databases)}")
+            
+            for idx, db in enumerate(all_databases):
+                if progress_callback:
+                    progress_callback(
+                        int((idx / total_dbs) * 100),
+                        100,
+                        f"准备备份数据库: {db} ({idx + 1}/{total_dbs})"
+                    )
+                
+                backup_file = self._backup_database(db, progress_callback, idx, total_dbs)
                 backup_files.append(backup_file)
+            
+            logger.info(f"所有数据库备份完成，共生成 {len(backup_files)} 个备份文件")
         
         return backup_files
 
     def cleanup_old_backups(self, retention_days: int) -> int:
         if retention_days <= 0:
+            logger.info("保留天数设置为0，跳过清理")
             return 0
         
         cutoff_time = datetime.datetime.now() - datetime.timedelta(days=retention_days)
         deleted_count = 0
         
         if not os.path.exists(self.backup_path):
+            logger.info(f"备份路径不存在: {self.backup_path}")
             return 0
+        
+        logger.info(f"开始清理 {retention_days} 天前的备份文件...")
+        logger.info(f"截止时间: {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         for filename in os.listdir(self.backup_path):
             filepath = os.path.join(self.backup_path, filename)
@@ -211,7 +258,7 @@ class BackupEngine:
                 if file_mtime < cutoff_time:
                     os.remove(filepath)
                     deleted_count += 1
-                    logger.info(f"已删除过期备份: {filename}")
+                    logger.info(f"已删除过期备份: {filename} (修改时间: {file_mtime.strftime('%Y-%m-%d %H:%M:%S')})")
         
         logger.info(f"清理完成，共删除 {deleted_count} 个过期备份文件")
         return deleted_count

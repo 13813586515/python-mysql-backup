@@ -297,6 +297,26 @@ def download_backup():
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/backups/cleanup', methods=['POST'])
+def manual_cleanup():
+    try:
+        config = load_config()
+        retention_days = config.get('retention_days', 30)
+        
+        engine = BackupEngine(config)
+        deleted_count = engine.cleanup_old_backups(retention_days)
+        
+        return jsonify({
+            'success': True, 
+            'message': f'清理完成，共删除 {deleted_count} 个过期备份文件',
+            'deleted_count': deleted_count,
+            'retention_days': retention_days
+        })
+    except Exception as e:
+        logger.error(f"手动清理失败: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/api/logs/stream')
 def stream_logs():
     def event_stream():
