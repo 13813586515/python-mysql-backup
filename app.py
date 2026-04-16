@@ -78,6 +78,9 @@ def load_all_configs() -> Dict[str, Any]:
                     if 'global_config' in old_config:
                         default_structure['global_config'] = old_config['global_config']
                     
+                    save_all_configs(default_structure)
+                    logger.info("旧配置已自动迁移到新格式")
+                    
                     return default_structure
                 return loaded
         except Exception as e:

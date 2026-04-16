@@ -33,6 +33,18 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
+function setButtonLoading(btnId, loading) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    
+    const textSpan = btn.querySelector('.btn-text');
+    const loaderSpan = btn.querySelector('.btn-loader');
+    
+    if (textSpan) textSpan.style.display = loading ? 'none' : 'inline';
+    if (loaderSpan) loaderSpan.style.display = loading ? 'inline' : 'none';
+    btn.disabled = loading;
+}
+
 function initTabs() {
     const navBtns = document.querySelectorAll('.nav-btn');
     const tabContents = document.querySelectorAll('.tab-content');
