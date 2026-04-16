@@ -178,6 +178,55 @@ body {
     font-size: 14px;
 }
 
+.hint-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+.info-text {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.card-notice {
+    margin-top: 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+}
+
+.card-notice h3 {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.database-selector {
+    margin-top: 15px;
+}
+
+.select-all-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.select-all-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.select-all-container label {
+    cursor: pointer;
+    margin: 0;
+    font-weight: 600;
+}
+
 .button-group {
     display: flex;
     gap: 10px;

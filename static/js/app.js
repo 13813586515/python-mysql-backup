@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
     connectLogStream();
     startStatusPolling();
-    loadBackupHistory();
 });
 
 function showToast(message, type = 'info') {
@@ -35,7 +34,7 @@ function initTabs() {
     const tabContents = document.querySelectorAll('.tab-content');
 
     navBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const tabId = btn.dataset.tab;
 
             navBtns.forEach(b => b.classList.remove('active'));
@@ -43,6 +42,13 @@ function initTabs() {
 
             btn.classList.add('active');
             document.getElementById(`${tabId}-tab`).classList.add('active');
+
+            if (tabId === 'history') {
+                await loadBackupHistory();
+            }
+            if (tabId === 'console') {
+                updateSelectedDbsInfo();
+            }
         });
     });
 }
@@ -79,7 +85,6 @@ function populateConfigForm(config) {
     if (form.db_port) form.db_port.value = config.db_port || 3306;
     if (form.db_user) form.db_user.value = config.db_user || 'root';
     if (form.db_password) form.db_password.value = config.db_password || '';
-    if (form.db_name) form.db_name.value = config.db_name || '';
     
     if (config.selected_databases && config.selected_databases.length > 0) {
         state.config.selected_databases = config.selected_databases;
@@ -133,6 +138,8 @@ function initEventListeners() {
     document.getElementById('refresh-status-btn').addEventListener('click', refreshStatus);
     document.getElementById('clear-logs-btn').addEventListener('click', clearLogs);
     document.getElementById('refresh-history-btn').addEventListener('click', loadBackupHistory);
+    document.getElementById('manual-cleanup-btn').addEventListener('click', manualCleanup);
+    document.getElementById('refresh-dbs-info-btn').addEventListener('click', updateSelectedDbsInfo);
 }
 
 function setButtonLoading(btnId, loading) {
@@ -153,8 +160,7 @@ async function testConnection() {
         db_host: form.db_host.value || 'localhost',
         db_port: parseInt(form.db_port.value) || 3306,
         db_user: form.db_user.value || 'root',
-        db_password: form.db_password.value,
-        db_name: form.db_name.value || ''
+        db_password: form.db_password.value
     };
 
     setButtonLoading('test-connection-btn', true);
@@ -190,7 +196,7 @@ async function loadDatabases(config) {
 
 function displayDatabaseList(databases) {
     const container = document.getElementById('database-list');
-    const selector = document.querySelector('.database-selector');
+    const selector = document.getElementById('database-selection');
     
     if (databases.length === 0) {
         container.innerHTML = '<p class="hint">没有找到可用的数据库</p>';
@@ -201,20 +207,79 @@ function displayDatabaseList(databases) {
     selector.style.display = 'block';
     const selectedDbs = state.config.selected_databases || [];
 
-    container.innerHTML = databases.map(db => `
+    let selectAllHtml = `
+        <div class="select-all-container">
+            <input type="checkbox" id="select-all-dbs" onchange="toggleSelectAll(this)">
+            <label for="select-all-dbs">全选/取消全选</label>
+        </div>
+    `;
+
+    let databasesHtml = databases.map(db => `
         <div class="checkbox-item">
             <input type="checkbox" id="db-${db}" name="selected_databases" value="${db}" 
-                ${selectedDbs.includes(db) ? 'checked' : ''}>
+                ${selectedDbs.includes(db) ? 'checked' : ''}
+                onchange="updateSelectAllStatus()">
             <label for="db-${db}">${db}</label>
         </div>
     `).join('');
+
+    container.innerHTML = selectAllHtml + '<div class="checkbox-group" style="padding-top: 5px;">' + databasesHtml + '</div>';
+    
+    updateSelectAllStatus();
+}
+
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('input[name="selected_databases"]');
+    checkboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+}
+
+function updateSelectAllStatus() {
+    const checkboxes = document.querySelectorAll('input[name="selected_databases"]');
+    const selectAllCheckbox = document.getElementById('select-all-dbs');
+    
+    if (checkboxes.length === 0 || !selectAllCheckbox) return;
+    
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    const someChecked = Array.from(checkboxes).some(cb => cb.checked);
+    
+    selectAllCheckbox.checked = allChecked;
+    selectAllCheckbox.indeterminate = someChecked && !allChecked;
+}
+
+function updateSelectedDbsInfo() {
+    const infoElement = document.getElementById('selected-dbs-info');
+    const selectedDbs = getSelectedDatabases();
+    
+    if (selectedDbs.length === 0) {
+        infoElement.textContent = '未选择任何数据库，请先在数据库配置中选择';
+        infoElement.style.color = 'var(--warning-color)';
+    } else if (selectedDbs.length === state.databases.length && state.databases.length > 0) {
+        infoElement.textContent = `已选择全部 ${selectedDbs.length} 个数据库`;
+        infoElement.style.color = 'var(--success-color)';
+    } else {
+        infoElement.textContent = `已选择 ${selectedDbs.length} 个数据库: ${selectedDbs.join(', ')}`;
+        infoElement.style.color = 'var(--primary-color)';
+    }
+}
+
+function getSelectedDatabases() {
+    const checkboxes = document.querySelectorAll('input[name="selected_databases"]:checked');
+    if (checkboxes.length > 0) {
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    return state.config.selected_databases || [];
 }
 
 async function saveConfig() {
     const form = document.getElementById('config-form');
-    const selectedDbs = Array.from(
-        document.querySelectorAll('input[name="selected_databases"]:checked')
-    ).map(cb => cb.value);
+    const selectedDbs = getSelectedDatabases();
+
+    if (selectedDbs.length === 0) {
+        showToast('请至少选择一个数据库', 'warning');
+        return;
+    }
 
     const config = {
         ...state.config,
@@ -222,7 +287,7 @@ async function saveConfig() {
         db_port: parseInt(form.db_port.value) || 3306,
         db_user: form.db_user.value || 'root',
         db_password: form.db_password.value,
-        db_name: form.db_name.value || '',
+        db_name: '',
         selected_databases: selectedDbs
     };
 
@@ -274,7 +339,36 @@ async function saveStrategy() {
     }
 }
 
+async function manualCleanup() {
+    const form = document.getElementById('strategy-form');
+    const retentionDays = parseInt(form.retention_days.value) || 30;
+
+    if (confirm(`确定要清理 ${retentionDays} 天前的所有备份文件吗？`)) {
+        setButtonLoading('manual-cleanup-btn', true);
+
+        const result = await fetchApi('/api/backups/cleanup', {
+            method: 'POST'
+        });
+
+        setButtonLoading('manual-cleanup-btn', false);
+
+        if (result.success) {
+            showToast(result.message, 'success');
+            await loadBackupHistory();
+        } else {
+            showToast(result.message, 'error');
+        }
+    }
+}
+
 async function startBackup() {
+    const selectedDbs = getSelectedDatabases();
+    
+    if (selectedDbs.length === 0) {
+        showToast('请先选择要备份的数据库', 'warning');
+        return;
+    }
+
     const startBtn = document.getElementById('start-backup-btn');
     const progressContainer = document.getElementById('progress-container');
     

@@ -7,8 +7,8 @@
     "db_port": 3306,
     "db_user": "root",
     "retention_days": 30,
-    "schedule_days": 7,
-    "schedule_time": "02:00",
+    "schedule_days": 2,
+    "schedule_time": "07:00",
     "schedule_type": "daily",
     "selected_databases": [
         "ice"
