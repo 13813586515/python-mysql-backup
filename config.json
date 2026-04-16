@@ -1,16 +1,37 @@
 {
-    "backup_mode": "manual",
-    "backup_path": "./backups",
-    "db_host": "192.168.0.45",
-    "db_name": "",
-    "db_password": "lampo_test_2022",
-    "db_port": 3306,
-    "db_user": "root",
-    "retention_days": 30,
-    "schedule_days": 2,
-    "schedule_time": "07:00",
-    "schedule_type": "daily",
-    "selected_databases": [
-        "ice"
-    ]
+    "global_config": {
+        "backup_path": "./backups",
+        "retention_days": 30,
+        "backup_mode": "manual",
+        "schedule_type": "daily",
+        "schedule_time": "02:00",
+        "schedule_days": 7
+    },
+    "database_configs": [
+        {
+            "id": "71f3080e",
+            "name": "192.168.0.45",
+            "db_host": "192.168.0.45",
+            "db_port": 3306,
+            "db_user": "root",
+            "db_password": "lampo_test_2022",
+            "selected_databases": [
+                "ice"
+            ],
+            "created_at": "2026-04-16T12:41:51.095077",
+            "updated_at": "2026-04-16T12:42:01.043549"
+        },
+        {
+            "id": "20fe1a01",
+            "name": "192.168.0.45",
+            "db_host": "192.168.0.45",
+            "db_port": 3306,
+            "db_user": "root",
+            "db_password": "",
+            "selected_databases": [],
+            "created_at": "2026-04-16T12:42:29.779646",
+            "updated_at": "2026-04-16T12:42:34.233179"
+        }
+    ],
+    "current_config_id": "71f3080e"
 }
