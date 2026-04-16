@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL 数据库备份工具</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>MySQL 数据库备份工具</h1>
+            <p class="subtitle">可视化数据库备份管理系统</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="nav-btn active" data-tab="config">数据库配置</button>
+            <button class="nav-btn" data-tab="strategy">备份策略</button>
+            <button class="nav-btn" data-tab="console">任务控制台</button>
+            <button class="nav-btn" data-tab="history">备份历史</button>
+        </nav>
+
+        <main class="main-content">
+            <section id="config-tab" class="tab-content active">
+                <div class="card">
+                    <h2>数据库连接配置</h2>
+                    <form id="config-form" class="form-grid">
+                        <div class="form-group">
+                            <label for="db_host">数据库主机</label>
+                            <input type="text" id="db_host" name="db_host" placeholder="localhost">
+                        </div>
+                        <div class="form-group">
+                            <label for="db_port">端口</label>
+                            <input type="number" id="db_port" name="db_port" placeholder="3306">
+                        </div>
+                        <div class="form-group">
+                            <label for="db_user">用户名</label>
+                            <input type="text" id="db_user" name="db_user" placeholder="root">
+                        </div>
+                        <div class="form-group">
+                            <label for="db_password">密码</label>
+                            <input type="password" id="db_password" name="db_password" placeholder="输入密码">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="db_name">默认数据库（可选）</label>
+                            <input type="text" id="db_name" name="db_name" placeholder="留空则可选择多个数据库">
+                        </div>
+                        <div class="form-group full-width database-selector" style="display: none;">
+                            <label>选择要备份的数据库</label>
+                            <div class="checkbox-group" id="database-list">
+                                <p class="hint">请先测试连接以加载数据库列表</p>
+                            </div>
+                        </div>
+                    </form>
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" id="test-connection-btn">
+                            <span class="btn-text">测试连接</span>
+                            <span class="btn-loader" style="display: none;">测试中...</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="save-config-btn">
+                            <span class="btn-text">保存配置</span>
+                            <span class="btn-loader" style="display: none;">保存中...</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="strategy-tab" class="tab-content">
+                <div class="card">
+                    <h2>备份策略设置</h2>
+                    <form id="strategy-form" class="form-grid">
+                        <div class="form-group full-width">
+                            <label for="backup_path">备份存储路径</label>
+                            <input type="text" id="backup_path" name="backup_path" placeholder="./backups">
+                        </div>
+                        <div class="form-group">
+                            <label for="retention_days">备份保留天数</label>
+                            <input type="number" id="retention_days" name="retention_days" min="1" max="365" placeholder="30">
+                            <small class="form-hint">超过此天数的备份将自动清理</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="backup_mode">备份模式</label>
+                            <select id="backup_mode" name="backup_mode">
+                                <option value="manual">手动备份</option>
+                                <option value="scheduled">定时备份</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="schedule-type-group" style="display: none;">
+                            <label for="schedule_type">定时方式</label>
+                            <select id="schedule_type" name="schedule_type">
+                                <option value="daily">每天</option>
+                                <option value="interval">间隔天数</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="schedule-time-group" style="display: none;">
+                            <label for="schedule_time">执行时间</label>
+                            <input type="time" id="schedule_time" name="schedule_time" value="02:00">
+                        </div>
+                        <div class="form-group" id="schedule-days-group" style="display: none;">
+                            <label for="schedule_days">间隔天数</label>
+                            <input type="number" id="schedule_days" name="schedule_days" min="1" max="30" value="7">
+                        </div>
+                    </form>
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" id="save-strategy-btn">
+                            <span class="btn-text">保存策略</span>
+                            <span class="btn-loader" style="display: none;">保存中...</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="console-tab" class="tab-content">
+                <div class="card">
+                    <h2>任务执行控制台</h2>
+                    
+                    <div class="status-panel">
+                        <div class="status-item">
+                            <span class="status-label">任务状态:</span>
+                            <span class="status-indicator" id="task-status">
+                                <span class="status-dot status-idle"></span>
+                                <span class="status-text">空闲</span>
+                            </span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">调度器状态:</span>
+                            <span class="status-indicator" id="scheduler-status">
+                                <span class="status-dot status-running"></span>
+                                <span class="status-text">运行中</span>
+                            </span>
+                        </div>
+                        <div class="status-item" id="next-run-item" style="display: none;">
+                            <span class="status-label">下次执行:</span>
+                            <span class="status-indicator" id="next-run-time">--</span>
+                        </div>
+                    </div>
+
+                    <div class="progress-container" id="progress-container" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-info">
+                            <span id="progress-message">准备中...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-success" id="start-backup-btn" style="display: inline-block;">
+                            <span class="btn-text">立即备份</span>
+                            <span class="btn-loader" style="display: none;">执行中...</span>
+                        </button>
+                        <button type="button" class="btn btn-warning" id="stop-backup-btn" style="display: none;">
+                            停止备份
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="refresh-status-btn">
+                            刷新状态
+                        </button>
+                    </div>
+
+                    <div class="log-container">
+                        <div class="log-header">
+                            <h3>实时日志</h3>
+                            <button type="button" class="btn btn-sm btn-secondary" id="clear-logs-btn">清空</button>
+                        </div>
+                        <div class="log-console" id="log-console">
+                            <div class="log-entry log-info">
+                                <span class="log-time">--</span>
+                                <span class="log-level">[INFO]</span>
+                                <span class="log-message">等待日志消息...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="history-tab" class="tab-content">
+                <div class="card">
+                    <h2>备份历史记录</h2>
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" id="refresh-history-btn">
+                            刷新列表
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="backup-table">
+                            <thead>
+                                <tr>
+                                    <th>文件名</th>
+                                    <th>创建时间</th>
+                                    <th>大小</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" class="text-center">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>MySQL 数据库备份工具 - 基于 Python 原生数据库库实现，跨平台兼容</p>
+        </footer>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
