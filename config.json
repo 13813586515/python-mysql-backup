@@ -1,0 +1,16 @@
+{
+    "backup_mode": "manual",
+    "backup_path": "./backups",
+    "db_host": "192.168.0.45",
+    "db_name": "",
+    "db_password": "lampo_test_2022",
+    "db_port": 3306,
+    "db_user": "root",
+    "retention_days": 30,
+    "schedule_days": 7,
+    "schedule_time": "02:00",
+    "schedule_type": "daily",
+    "selected_databases": [
+        "ice"
+    ]
+}
